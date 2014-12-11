@@ -123,6 +123,19 @@ packets = {
     0x02: handshake_packet,
 }
 
+packet_netty = Struct(
+    "full_packet",
+    VarInt("length"),
+    VarInt("header"),
+    Switch("payload", lambda ctx: ctx.header, packets_netty)
+)
+
+packet = Struct(
+    "full_packet",
+    UBInt8("header"),
+    Switch("payload", lambda ctx: ctx.header, packets)
+)
+
 packet_stream = Struct(
     "packet_stream",
     OptionalGreedyRange(
