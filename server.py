@@ -138,11 +138,13 @@ packet = Struct(
 
 packet_stream = Struct(
     "packet_stream",
+    Peek(UBInt8("peeked")),
     OptionalGreedyRange(
-        Struct(
-            "full_packet",
-            UBInt8("header"),
-            Switch("payload", lambda ctx: ctx.header, packets)
+        IfThenElse(
+            "old_or_new",
+            lambda ctx: ctx.peeked not in [1,2],
+            packet,
+            packet_netty
         )
     ),
     OptionalGreedyRange(
@@ -174,7 +176,7 @@ def make_packet(packet, *args, **kwargs):
 def parse_packets(buff):
     container = packet_stream.parse(buff)
 
-    l = [(i.header, i.payload) for i in container.full_packet]
+    l = [(i.header, i.payload) for i in container.old_or_new.full_packet]
     leftovers = "".join(chr(i) for i in container.leftovers)
 
     for header, payload in l:
