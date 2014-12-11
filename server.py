@@ -1,12 +1,19 @@
 from construct import OptionalGreedyRange, Sequence, StringAdapter, Peek
 from construct import LengthValueAdapter, Struct, Switch, Container, IfThenElse
+from construct import PascalString
 from construct import MetaField, SBInt8, SBInt32, UBInt8, UBInt16
 from construct import UBInt32, UBInt64
 from twisted.internet import protocol, reactor
 
+from varint import VarInt
+
 from hammerencodings import ucs2
 from codecs import register
 register(ucs2)
+
+
+def ProtoStringNetty(name):
+    return PascalString(name, length_field=VarInt("lengeth"))
 
 
 class DoubleAdapter(LengthValueAdapter):
