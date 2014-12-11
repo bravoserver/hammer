@@ -139,11 +139,13 @@ packet_stream = Struct(
 packet_stream_new = Struct(
     "packet_stream",
     OptionalGreedyRange(
-        Struct(
-            "full_packet",
-            VarInt("length"),
-            VarInt("header"),
-            Switch("payload", lambda ctx: ctx.header, packets_new)
+        LengthValueAdapter(
+            Struct(
+                "full_packet",
+                VarInt("header"),
+                Switch("payload", lambda ctx: ctx.header, packets_new)
+            ),
+            length_field=VarInt("length")
         )
     ),
     OptionalGreedyRange(
