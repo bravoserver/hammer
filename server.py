@@ -1,5 +1,6 @@
 from construct import OptionalGreedyRange, Sequence, StringAdapter, Peek
 from construct import LengthValueAdapter, Struct, Switch, Container, IfThenElse
+from construct import PascalString
 from construct import MetaField, SBInt8, SBInt32, UBInt8, UBInt16
 from construct import UBInt32, UBInt64
 from twisted.internet import protocol, reactor
@@ -10,23 +11,8 @@ from codecs import register
 register(ucs2)
 
 
-class LengthVarIntAdapter(LengthValueAdapter):
-
-    def _encode(self, obj, context):
-        return VarInt("blah")._build(len(obj)), obj
-
 def ProtoStringNew(name):
-    sa = StringAdapter(
-        LengthVarIntAdapter(
-            Sequence(
-                name,
-                VarInt("length"),
-                MetaField("data", lambda ctx: ctx["length"])
-            )
-        ),
-        encoding="utf8"
-    )
-    return sa
+    return PascalString(name, length_field=VarInt("length"))
 
 
 class DoubleAdapter(LengthValueAdapter):
