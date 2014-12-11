@@ -44,7 +44,7 @@ handshake_netty_4 = Struct(
 )
 
 packets_netty = {
-    0x00: "handshake"
+    0x00: handshake_netty_4
 }
 
 packets_by_name_netty = {
