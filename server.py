@@ -19,26 +19,7 @@ def ProtoStringNew(name):
     return PascalString(name, length_field=VarInt("length"))
 
 
-class DoubleAdapter(LengthValueAdapter):
-
-    def _encode(self, obj, context):
-        return len(obj) / 2, obj
-
-
-def ProtoString(name):
-    sa = StringAdapter(
-        DoubleAdapter(
-            Sequence(
-                name,
-                UBInt16("length"),
-                MetaField("data", lambda ctx: ctx["length"] * 2)
-            )
-        ),
-        encoding="ucs2"
-    )
-    return sa
-
-handshake_new = Struct(
+handshake = Struct(
     "handshake",
     VarInt("protocol"),
     ProtoStringNew("host"),
@@ -46,101 +27,15 @@ handshake_new = Struct(
     VarInt("state")
 )
 
-handshake22 = Struct(
-    "handshake22",
-    ProtoString("username")
-)
-
-handshake39 = Struct(
-    "handshake39",
-    SBInt8("protocol"),
-    ProtoString("username"),
-    ProtoString("host"),
-    SBInt32("port")
-)
-
-handshake_packet = Struct(
-    "handshake_packet",
-    Peek(SBInt8("peekedVersion")),
-    IfThenElse(
-        "old_handshake",
-        lambda ctx: (ctx.peekedVersion >= 38 and ctx.peekedVersion <= 78),
-        handshake39,
-        handshake22
-    )
-)
-
-login22 = Struct(
-    "login22",
-    UBInt64("22-unused-long"),
-    UBInt32("22-unused-int"),
-    UBInt8("22-unused-sbyte1"),
-    UBInt8("22-unused-sbyte2"),
-    UBInt8("22-unused-byte1"),
-    UBInt8("22-unused-byte2")
-)
-
-login28 = Struct(
-    "login28",
-    ProtoString("28-unused-emptystring"),
-    UBInt32("28-unused-int1"),
-    UBInt32("28-unused-int2"),
-    UBInt8("28-unused-sbyte1"),
-    UBInt8("28-unused-byte1"),
-    UBInt8("28-unused-byte2")
-)
-
-login_packet = Struct(
-    "login",
-    UBInt32("protocol"),
-    ProtoString("username"),
-    Switch(
-        "usused-matter",
-        lambda ctx: ctx.protocol,
-        {
-            22: login22,
-            23: login22,
-            28: login28,
-            29: login28,
-        },
-        default=UBInt8("UNKNOWN-PROTOCOL")
-    )
-)
-
-
 packets_by_name = {
-    "login": 0x01,
-    "handshake": 0x02,
+    "handshake": 0x00,
 }
 
 packets = {
-    0x01: login_packet,
-    0x02: handshake_packet,
-}
-
-packets_by_name_new = {
-    "handshake": 0x00
-}
-
-packets_new = {
-    0x00: handshake_new
+    0x00: handshake,
 }
 
 packet_stream = Struct(
-    "packet_stream",
-    OptionalGreedyRange(
-        Struct(
-            "full_packet",
-            UBInt8("header"),
-            Switch("payload", lambda ctx: ctx.header, packets)
-        )
-    ),
-    OptionalGreedyRange(
-        UBInt8("leftovers")
-    )
-)
-
-packet_stream_new = Struct(
     "packet_stream",
     OptionalGreedyRange(
         VarIntLengthAdapter(
@@ -150,7 +45,7 @@ packet_stream_new = Struct(
                 Struct(
                     "full_packet",
                     VarInt("header"),
-                    Switch("payload", lambda ctx: ctx.header, packets_new)
+                    Switch("payload", lambda ctx: ctx.header, packets)
                 )
             )
         )
@@ -159,37 +54,6 @@ packet_stream_new = Struct(
         VarInt("leftovers")
     )
 )
-
-packet_stream = Struct(
-    "stream",
-    Peek(UBInt8("first_byte")),
-    IfThenElse(
-        "ifed_stream",
-        lambda ctx: ctx.first_byte not in [1,2],
-        packet_stream_new,
-        packet_stream_old
-    )
-)
-
-def make_packet(packet, *args, **kwargs):
-    if packet not in packets_by_name:
-        print "Couldn't create unsupported packet: %s" % packet
-        return ""
-
-    header = packets_by_name[packet]
-    print "0%.2x" % header
-
-    for arg in args:
-        kwargs.update(dict(arg))
-
-    container = Container(**kwargs)
-    payload = packets[header].build(container)
-
-    print "Making packet: <%s> (0x%.2x)" % (packet, header)
-    print payload
-
-    return chr(header)+payload
-
 
 def parse_packets(buff):
     container = packet_stream.parse(buff)
@@ -218,20 +82,13 @@ class Hammer(protocol.Protocol):
         packets, self.buff = parse_packets(self.buff)
 
         for header, payload in packets:
+            print "header: %s" % header
             if header == packets_by_name["handshake"]:
-                if 'protocol' in payload.old_handshake.keys():
+                if 'protocol' in payload.keys():
                     self.protocol_found = True
-                    print "protocol: %d" % payload.old_handshake.protocol
+                    print "protocol = %s" % payload.protocol
                 else:
-                    container = Container(username="-")
-                    payload = handshake22.build(container)
-
-                    self.transport.write(chr(header)+payload)
-
-            if header == packets_by_name["login"] and not self.protocol_found:
-                self.protocol_found = True
-                print "protocol: %d" % payload.protocol
-
+                    print "nope"
 
 def main():
     factory = protocol.ServerFactory()
