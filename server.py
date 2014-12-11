@@ -3,10 +3,30 @@ from construct import LengthValueAdapter, Struct, Switch, Container, IfThenElse
 from construct import MetaField, SBInt8, SBInt32, UBInt8, UBInt16
 from construct import UBInt32, UBInt64
 from twisted.internet import protocol, reactor
+from varint import VarInt
 
 from hammerencodings import ucs2
 from codecs import register
 register(ucs2)
+
+
+class LengthVarIntAdapter(LengthValueAdapter):
+
+    def _encode(self, obj, context):
+        return VarInt("blah")._build(len(obj)), obj
+
+def ProtoStringNew(name):
+    sa = StringAdapter(
+        LengthVarIntAdapter(
+            Sequence(
+                name,
+                VarInt("length"),
+                MetaField("data", lambda ctx: ctx["length"])
+            )
+        ),
+        encoding="utf8"
+    )
+    return sa
 
 
 class DoubleAdapter(LengthValueAdapter):
@@ -27,6 +47,14 @@ def ProtoString(name):
         encoding="ucs2"
     )
     return sa
+
+handshake_new = Struct(
+    "handshake",
+    VarInt("protocol"),
+    ProtoStringNew("host"),
+    UBInt16("port"),
+    VarInt("state")
+)
 
 handshake22 = Struct(
     "handshake22",
@@ -100,6 +128,14 @@ packets = {
     0x02: handshake_packet,
 }
 
+packets_by_name_new = {
+    "handshake": 0x00
+}
+
+packets_new = {
+    0x00: handshake_new
+}
+
 packet_stream = Struct(
     "packet_stream",
     OptionalGreedyRange(
@@ -111,6 +147,21 @@ packet_stream = Struct(
     ),
     OptionalGreedyRange(
         UBInt8("leftovers")
+    )
+)
+
+packet_stream_new = Struct(
+    "packet_stream",
+    OptionalGreedyRange(
+        Struct(
+            "full_packet",
+            VarInt("length"),
+            VarInt("header"),
+            Switch("payload", lambda ctx: ctx.header, packets_new)
+        )
+    ),
+    OptionalGreedyRange(
+        VarInt("leftovers")
     )
 )
 
