@@ -38,16 +38,11 @@ packets = {
 packet_stream = Struct(
     "packet_stream",
     OptionalGreedyRange(
-        VarIntLengthAdapter(
-            Sequence(
-                "packet_sequence",
-                VarInt("length"),
-                Struct(
-                    "full_packet",
-                    VarInt("header"),
-                    Switch("payload", lambda ctx: ctx.header, packets)
-                )
-            )
+        Struct(
+            "full_packet",
+            VarInt("length"),
+            VarInt("header"),
+            Switch("payload", lambda ctx: ctx.header, packets)
         )
     ),
     OptionalGreedyRange(
