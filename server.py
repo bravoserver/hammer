@@ -175,7 +175,6 @@ class Hammer(protocol.Protocol):
 
     def dataReceived(self, data):
         self.buff += data
-        print "buff: 0x%.2x" % self.buff
 
         packets, self.buff = parse_packets(self.buff)
 
