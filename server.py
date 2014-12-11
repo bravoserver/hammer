@@ -35,14 +35,20 @@ def ProtoString(name):
     )
     return sa
 
-handshake_netty = {
-    "handshakenetty",
-    VarInt("length"),
-    VarInt("header"),
+handshake_netty_4 = Struct(
+    "handshake",
     VarInt("protocol"),
     ProtoStringNetty("host"),
     UBInt16("port"),
     VarInt("state")
+)
+
+packets_netty = {
+    0x00: "handshake"
+}
+
+packets_by_name_netty = {
+    "handshake": 0x00
 }
 
 handshake22 = Struct(
