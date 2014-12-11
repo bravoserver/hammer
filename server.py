@@ -10,6 +10,10 @@ from hammerencodings import ucs2
 from codecs import register
 register(ucs2)
 
+class VarIntLengthAdapter(LengthValueAdapter):
+    def _encode(self, obj, ctx):
+        return VarInt("lengeth").build(len(obj)), obj
+
 
 def ProtoStringNew(name):
     return PascalString(name, length_field=VarInt("length"))
@@ -139,13 +143,16 @@ packet_stream = Struct(
 packet_stream_new = Struct(
     "packet_stream",
     OptionalGreedyRange(
-        LengthValueAdapter(
-            Struct(
-                "full_packet",
-                VarInt("header"),
-                Switch("payload", lambda ctx: ctx.header, packets_new)
-            ),
-            length_field=VarInt("length")
+        VarIntLengthAdapter(
+            Sequence(
+                "packet_sequence",
+                VarInt("length"),
+                Struct(
+                    "full_packet",
+                    VarInt("header"),
+                    Switch("payload", lambda ctx: ctx.header, packets_new)
+                )
+            )
         )
     ),
     OptionalGreedyRange(
@@ -153,6 +160,16 @@ packet_stream_new = Struct(
     )
 )
 
+packet_stream = Struct(
+    "stream",
+    Peek(UBInt8("first_byte")),
+    IfThenElse(
+        "ifed_stream",
+        lambda ctx: ctx.first_byte not in [1,2],
+        packet_stream_new,
+        packet_stream_old
+    )
+)
 
 def make_packet(packet, *args, **kwargs):
     if packet not in packets_by_name:
@@ -197,7 +214,6 @@ class Hammer(protocol.Protocol):
 
     def dataReceived(self, data):
         self.buff += data
-        print "buff: 0x%.2x" % self.buff
 
         packets, self.buff = parse_packets(self.buff)
 
