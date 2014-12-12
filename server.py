@@ -142,7 +142,7 @@ packet_stream = Struct(
     OptionalGreedyRange(
         IfThenElse(
             "old_or_new",
-            lambda ctx: ctx.peeked not in [chr(1),chr(2)],
+            lambda ctx: ctx.peeked not in [chr(1), chr(2)],
             packet_netty,
             packet,
         )
@@ -210,7 +210,8 @@ class Hammer(protocol.Protocol):
 
                     self.transport.write(chr(header)+payload)
 
-            elif header == packets_by_name["login"] and not self.protocol_found:
+            elif (header == packets_by_name["login"] and
+                  not self.protocol_found):
                 self.protocol_found = True
                 print "protocol: %d" % payload.protocol
 
@@ -218,6 +219,7 @@ class Hammer(protocol.Protocol):
                 if payload.state == 2:
                     self.protocol_found = True
                     print "protocol: %d" % payload.protocol
+
 
 def main():
     factory = protocol.ServerFactory()
