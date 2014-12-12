@@ -210,10 +210,14 @@ class Hammer(protocol.Protocol):
 
                     self.transport.write(chr(header)+payload)
 
-            if header == packets_by_name["login"] and not self.protocol_found:
+            elif header == packets_by_name["login"] and not self.protocol_found:
                 self.protocol_found = True
                 print "protocol: %d" % payload.protocol
 
+            elif header == packets_by_name_netty["handshake"]:
+                if payload.state == 2:
+                    self.protocol_found = True
+                    print "protocol: %d" % payload.protocol
 
 def main():
     factory = protocol.ServerFactory()
