@@ -1,12 +1,19 @@
 from construct import OptionalGreedyRange, Sequence, StringAdapter, Peek
 from construct import LengthValueAdapter, Struct, Switch, Container, IfThenElse
+from construct import PascalString
 from construct import MetaField, SBInt8, SBInt32, UBInt8, UBInt16
 from construct import UBInt32, UBInt64
 from twisted.internet import protocol, reactor
 
+from varint import VarInt
+
 from hammerencodings import ucs2
 from codecs import register
 register(ucs2)
+
+
+def ProtoStringNetty(name):
+    return PascalString(name, length_field=VarInt("lengeth"))
 
 
 class DoubleAdapter(LengthValueAdapter):
@@ -27,6 +34,22 @@ def ProtoString(name):
         encoding="ucs2"
     )
     return sa
+
+handshake_netty_4 = Struct(
+    "handshake",
+    VarInt("protocol"),
+    ProtoStringNetty("host"),
+    UBInt16("port"),
+    VarInt("state")
+)
+
+packets_netty = {
+    0x00: handshake_netty_4
+}
+
+packets_by_name_netty = {
+    "handshake": 0x00
+}
 
 handshake22 = Struct(
     "handshake22",
@@ -100,13 +123,28 @@ packets = {
     0x02: handshake_packet,
 }
 
+packet_netty = Struct(
+    "full_packet",
+    VarInt("length"),
+    VarInt("header"),
+    Switch("payload", lambda ctx: ctx.header, packets_netty)
+)
+
+packet = Struct(
+    "full_packet",
+    UBInt8("header"),
+    Switch("payload", lambda ctx: ctx.header, packets)
+)
+
 packet_stream = Struct(
     "packet_stream",
+    Peek(UBInt8("peeked")),
     OptionalGreedyRange(
-        Struct(
-            "full_packet",
-            UBInt8("header"),
-            Switch("payload", lambda ctx: ctx.header, packets)
+        IfThenElse(
+            "old_or_new",
+            lambda ctx: ctx.peeked not in [chr(1),chr(2)],
+            packet_netty,
+            packet,
         )
     ),
     OptionalGreedyRange(
@@ -138,7 +176,7 @@ def make_packet(packet, *args, **kwargs):
 def parse_packets(buff):
     container = packet_stream.parse(buff)
 
-    l = [(i.header, i.payload) for i in container.full_packet]
+    l = [(i.header, i.payload) for i in container.old_or_new]
     leftovers = "".join(chr(i) for i in container.leftovers)
 
     for header, payload in l:
@@ -158,7 +196,6 @@ class Hammer(protocol.Protocol):
 
     def dataReceived(self, data):
         self.buff += data
-        print "buff: 0x%.2x" % self.buff
 
         packets, self.buff = parse_packets(self.buff)
 
@@ -173,10 +210,14 @@ class Hammer(protocol.Protocol):
 
                     self.transport.write(chr(header)+payload)
 
-            if header == packets_by_name["login"] and not self.protocol_found:
+            elif header == packets_by_name["login"] and not self.protocol_found:
                 self.protocol_found = True
                 print "protocol: %d" % payload.protocol
 
+            elif header == packets_by_name_netty["handshake"]:
+                if payload.state == 2:
+                    self.protocol_found = True
+                    print "protocol: %d" % payload.protocol
 
 def main():
     factory = protocol.ServerFactory()
