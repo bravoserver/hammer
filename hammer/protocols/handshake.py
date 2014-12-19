@@ -3,9 +3,9 @@ from construct import Switch
 from construct import SBInt8, SBInt32, UBInt8, UBInt16, UBInt32, UBInt64
 from twisted.internet import protocol, reactor
 
-from types import ProtoString, ProtoStringNetty, VarInt
+from hammer.types import ProtoString, ProtoStringNetty, VarInt
 
-from hammerencodings import ucs2
+from hammer.encodings import ucs2
 from codecs import register
 register(ucs2)
 
@@ -194,13 +194,3 @@ class Hammer(protocol.Protocol):
                 if payload.state == 2:
                     self.protocol_found = True
                     print "protocol: %d" % payload.protocol
-
-
-def main():
-    factory = protocol.ServerFactory()
-    factory.protocol = Hammer
-    reactor.listenTCP(25565, factory)
-    reactor.run()
-
-if __name__ == '__main__':
-    main()
