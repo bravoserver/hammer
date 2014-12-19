@@ -1,4 +1,30 @@
-from construct import Construct, UBInt8
+from construct import Construct, LengthValueAdapter, MetaField, PascalString
+from construct import Sequence, StringAdapter
+from construct import UBInt8, UBInt16
+
+
+class DoubleAdapter(LengthValueAdapter):
+
+    def _encode(self, obj, context):
+        return len(obj) / 2, obj
+
+
+def ProtoString(name):
+    sa = StringAdapter(
+        DoubleAdapter(
+            Sequence(
+                name,
+                UBInt16("length"),
+                MetaField("data", lambda ctx: ctx["length"] * 2)
+            )
+        ),
+        encoding="ucs2"
+    )
+    return sa
+
+
+def ProtoStringNetty(name):
+    return PascalString(name, length_field=VarInt("lengeth"))
 
 
 class VarInt(Construct):
@@ -36,19 +62,3 @@ class VarInt(Construct):
 
     def _sizeof(self, ctx):
         pass
-
-
-if __name__ == '__main__':
-    testvals = (("\x01", 1), ("\xac\x02", 300))
-    for testval in testvals:
-        testvarint, testnumber = testval
-        checkvarint = VarInt('test').build(testnumber)
-        if checkvarint == testvarint:
-            print 'success with %d' % testnumber
-        else:
-            print 'failure: %s %s' % (checkvarint, testvarint)
-        checknumber = VarInt('test').parse(testvarint)
-        if checknumber == testnumber:
-            print 'success with %d' % testnumber
-        else:
-            print 'failure: %d %d' % (checknumber, testnumber)
