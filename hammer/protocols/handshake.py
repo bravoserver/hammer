@@ -1,7 +1,10 @@
+from importlib import import_module
+
 from construct import Container, IfThenElse, OptionalGreedyRange, Peek, Struct
 from construct import Switch
 from construct import SBInt8, SBInt32, UBInt8, UBInt16, UBInt32, UBInt64
 from twisted.internet import protocol, reactor
+from twisted.python import log
 
 from hammer.types import ProtoString, ProtoStringNetty, VarInt
 
@@ -9,6 +12,7 @@ from hammer.encodings import ucs2
 from codecs import register
 register(ucs2)
 
+SHOW_PACKETS = False
 
 handshake_netty_4 = Struct(
     "handshake",
@@ -117,7 +121,7 @@ packet_stream = Struct(
     OptionalGreedyRange(
         IfThenElse(
             "old_or_new",
-            lambda ctx: ctx.peeked not in [chr(1), chr(2)],
+            lambda ctx: ctx.peeked not in [1, 2],
             packet_netty,
             packet,
         )
@@ -130,11 +134,10 @@ packet_stream = Struct(
 
 def make_packet(packet, *args, **kwargs):
     if packet not in packets_by_name:
-        print "Couldn't create unsupported packet: %s" % packet
+        log.msg("Couldn't create unsupported packet: %s" % packet)
         return ""
 
     header = packets_by_name[packet]
-    print "0%.2x" % header
 
     for arg in args:
         kwargs.update(dict(arg))
@@ -142,8 +145,9 @@ def make_packet(packet, *args, **kwargs):
     container = Container(**kwargs)
     payload = packets[header].build(container)
 
-    print "Making packet: <%s> (0x%.2x)" % (packet, header)
-    print payload
+    if SHOW_PACKETS:
+        log.msg("Making packet: <%s> (0x%.2x)" % (packet, header))
+        log.msg(payload)
 
     return chr(header)+payload
 
@@ -154,43 +158,65 @@ def parse_packets(buff):
     l = [(i.header, i.payload) for i in container.old_or_new]
     leftovers = "".join(chr(i) for i in container.leftovers)
 
-    for header, payload in l:
-        print "Parsed packet 0x%.2x" % header
-        print payload
+    if SHOW_PACKETS:
+        for header, payload in l:
+            log.msg("Parsed packet 0x%.2x" % header)
+            log.msg(payload)
 
     return l, leftovers
 
 
-class Hammer(protocol.Protocol):
+class HammerHandshakeProtocol(protocol.Protocol):
 
     buff = ""
-    protocol_found = False
+    protocol_version = None
+    loaded_protocol = None
 
     def write_packet(self, header, **payload):
         self.transport.write(make_packet(header, **payload))
 
     def dataReceived(self, data):
-        self.buff += data
 
-        packets, self.buff = parse_packets(self.buff)
+        if not self.protocol_version and not self.loaded_protocol:
+            self.buff += data
+            packets, self.buff = parse_packets(self.buff)
 
-        for header, payload in packets:
-            if header == packets_by_name["handshake"]:
-                if 'protocol' in payload.old_handshake.keys():
-                    self.protocol_found = True
-                    print "protocol: %d" % payload.old_handshake.protocol
-                else:
-                    container = Container(username="-")
-                    payload = handshake22.build(container)
+            for header, payload in packets:
+                if header == packets_by_name["handshake"]:
+                    if 'protocol' in payload.old_handshake.keys():
+                        self.protocol_version = "prenetty_%d" % (
+                            payload.old_handshake.protocol
+                        )
+                    else:
+                        container = Container(username="-")
+                        payload = handshake22.build(container)
+                        log.msg("sending handshake back")
+                        self.transport.write(chr(header)+payload)
 
-                    self.transport.write(chr(header)+payload)
+                elif (header == packets_by_name["login"] and
+                      not self.protocol_version):
+                    self.protocol_version = "prenetty_%d" % payload.protocol
 
-            elif (header == packets_by_name["login"] and
-                  not self.protocol_found):
-                self.protocol_found = True
-                print "protocol: %d" % payload.protocol
+                elif header == packets_by_name_netty["handshake"]:
+                    if payload.state == 2:
+                        self.protocol_version = "netty_%d" % payload.protocol
 
-            elif header == packets_by_name_netty["handshake"]:
-                if payload.state == 2:
-                    self.protocol_found = True
-                    print "protocol: %d" % payload.protocol
+        if self.protocol_version and not self.loaded_protocol:
+            try:
+                log.msg("Loading protocol: %s" % self.protocol_version)
+                p = import_module(self.protocol_version, "hammer.protocols")
+                self.loaded_protocol = p
+                self.loaded_protocol.connected = 1
+                self.loaded_protocol.transport = self.transport
+                self.loaded_protocol.connectionMade()
+                if self.buff:
+                    self.protocol.dataReceived(self.buff)
+            except:
+                log.msg("Unable to load protocol: %s" % self.protocol_version)
+                self.transport.loseConnection()
+        elif self.loaded_protocol:
+            self.loaded_protocol.dataReceived(data)
+
+    def connectionLost(self, reason):
+        if self.loaded_protocol:
+            self.loaded_protocol.connectionLost(reason)
