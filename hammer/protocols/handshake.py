@@ -175,8 +175,7 @@ class HammerHandshakeProtocol(protocol.Protocol):
     def write_packet(self, header, **payload):
         self.transport.write(make_packet(header, **payload))
 
-    def dataReceived(self, data):
-
+    def extract_protocol(self, data):
         if not self.protocol_version and not self.loaded_protocol:
             self.buff += data
             packets, self.buff = parse_packets(self.buff)
@@ -184,7 +183,7 @@ class HammerHandshakeProtocol(protocol.Protocol):
             for header, payload in packets:
                 if header == packets_by_name["handshake"]:
                     if 'protocol' in payload.old_handshake.keys():
-                        self.protocol_version = "prenetty_%d" % (
+                        return "prenetty_%d" % (
                             payload.old_handshake.protocol
                         )
                     else:
@@ -195,11 +194,15 @@ class HammerHandshakeProtocol(protocol.Protocol):
 
                 elif (header == packets_by_name["login"] and
                       not self.protocol_version):
-                    self.protocol_version = "prenetty_%d" % payload.protocol
+                    return "prenetty_%d" % payload.protocol
 
                 elif header == packets_by_name_netty["handshake"]:
                     if payload.state == 2:
-                        self.protocol_version = "netty_%d" % payload.protocol
+                        return "netty_%d" % payload.protocol
+
+    def dataReceived(self, data):
+
+        self.protocol_version = self.extract_protocol(data)
 
         if self.protocol_version and not self.loaded_protocol:
             try:
